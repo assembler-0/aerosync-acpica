@@ -349,7 +349,6 @@
 
 #elif defined(__QNX__)
 #include "acqnx.h"
-
 /*
  * EFI applications can be built with -nostdlib, in this case, it must be
  * included after including all other host environmental definitions, in
@@ -360,6 +359,10 @@
 
 #elif defined(__ZEPHYR__)
 #include "aczephyr.h"
+
+#elif defined(__aerosync__)
+#include "acaerosync.h"
+
 #else
 
 /* Unknown environment */
