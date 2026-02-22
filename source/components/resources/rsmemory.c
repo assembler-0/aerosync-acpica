@@ -1,6 +1,6 @@
 /*******************************************************************************
  *
- * Module Name: utstring - Common functions for strings and characters
+ * Module Name: rsmem24 - Memory resource descriptors
  *
  ******************************************************************************/
 
@@ -151,235 +151,205 @@
 
 #include "acpi.h"
 #include "accommon.h"
-#include "acnamesp.h"
+#include "acresrc.h"
 
-
-#define _COMPONENT          ACPI_UTILITIES
-        ACPI_MODULE_NAME    ("utstring")
-
-
-/*******************************************************************************
- *
- * FUNCTION:    AcpiUtPrintString
- *
- * PARAMETERS:  String          - Null terminated ASCII string
- *              MaxLength       - Maximum output length. Used to constrain the
- *                                length of strings during debug output only.
- *
- * RETURN:      None
- *
- * DESCRIPTION: Dump an ASCII string with support for ACPI-defined escape
- *              sequences.
- *
- ******************************************************************************/
-
-void
-AcpiUtPrintString (
-    char                    *String,
-    UINT16                  MaxLength)
-{
-    UINT32                  i;
-
-
-    if (!String)
-    {
-        AcpiOsPrintf ("<\"NULL STRING PTR\">");
-        return;
-    }
-
-    AcpiOsPrintf ("\"");
-    for (i = 0; (i < MaxLength) && String[i]; i++)
-    {
-        /* Escape sequences */
-
-        switch (String[i])
-        {
-        case 0x07:
-
-            AcpiOsPrintf ("\\a");       /* BELL */
-            break;
-
-        case 0x08:
-
-            AcpiOsPrintf ("\\b");       /* BACKSPACE */
-            break;
-
-        case 0x0C:
-
-            AcpiOsPrintf ("\\f");       /* FORMFEED */
-            break;
-
-        case 0x0A:
-
-            AcpiOsPrintf ("\\n");       /* LINEFEED */
-            break;
-
-        case 0x0D:
-
-            AcpiOsPrintf ("\\r");       /* CARRIAGE RETURN*/
-            break;
-
-        case 0x09:
-
-            AcpiOsPrintf ("\\t");       /* HORIZONTAL TAB */
-            break;
-
-        case 0x0B:
-
-            AcpiOsPrintf ("\\v");       /* VERTICAL TAB */
-            break;
-
-        case '\'':                      /* Single Quote */
-        case '\"':                      /* Double Quote */
-        case '\\':                      /* Backslash */
-
-            AcpiOsPrintf ("\\%c", (int) String[i]);
-            break;
-
-        default:
-
-            /* Check for printable character or hex escape */
-
-            if (isprint ((int) String[i]))
-            {
-                /* This is a normal character */
-
-                AcpiOsPrintf ("%c", (int) String[i]);
-            }
-            else
-            {
-                /* All others will be Hex escapes */
-
-                AcpiOsPrintf ("\\x%2.2X", (INT32) String[i]);
-            }
-            break;
-        }
-    }
-
-    AcpiOsPrintf ("\"");
-
-    if (i == MaxLength && String[i])
-    {
-        AcpiOsPrintf ("...");
-    }
-}
+#define _COMPONENT          ACPI_RESOURCES
+        ACPI_MODULE_NAME    ("rsmemory")
 
 
 /*******************************************************************************
  *
- * FUNCTION:    AcpiUtRepairName
- *
- * PARAMETERS:  Name            - The ACPI name to be repaired
- *
- * RETURN:      Repaired version of the name
- *
- * DESCRIPTION: Repair an ACPI name: Change invalid characters to '*' and
- *              return the new name. NOTE: the Name parameter must reside in
- *              read/write memory, cannot be a const.
- *
- * An ACPI Name must consist of valid ACPI characters. We will repair the name
- * if necessary because we don't want to abort because of this, but we want
- * all namespace names to be printable. A warning message is appropriate.
- *
- * This issue came up because there are in fact machines that exhibit
- * this problem, and we want to be able to enable ACPI support for them,
- * even though there are a few bad names.
+ * AcpiRsConvertMemory24
  *
  ******************************************************************************/
 
-void
-AcpiUtRepairName (
-    char                    *Name)
+ACPI_RSCONVERT_INFO     AcpiRsConvertMemory24[4] =
 {
-    UINT32                  i;
-    BOOLEAN                 FoundBadChar = FALSE;
-    UINT32                  OriginalName;
+    {ACPI_RSC_INITGET,  ACPI_RESOURCE_TYPE_MEMORY24,
+                        ACPI_RS_SIZE (ACPI_RESOURCE_MEMORY24),
+                        ACPI_RSC_TABLE_SIZE (AcpiRsConvertMemory24)},
+
+    {ACPI_RSC_INITSET,  ACPI_RESOURCE_NAME_MEMORY24,
+                        sizeof (AML_RESOURCE_MEMORY24),
+                        0},
+
+    /* Read/Write bit */
+
+    {ACPI_RSC_1BITFLAG, ACPI_RS_OFFSET (Data.Memory24.WriteProtect),
+                        AML_OFFSET (Memory24.Flags),
+                        0},
+    /*
+     * These fields are contiguous in both the source and destination:
+     * Minimum Base Address
+     * Maximum Base Address
+     * Address Base Alignment
+     * Range Length
+     */
+    {ACPI_RSC_MOVE16,   ACPI_RS_OFFSET (Data.Memory24.Minimum),
+                        AML_OFFSET (Memory24.Minimum),
+                        4}
+};
 
 
-    ACPI_FUNCTION_NAME (UtRepairName);
+/*******************************************************************************
+ *
+ * AcpiRsConvertMemory32
+ *
+ ******************************************************************************/
 
+ACPI_RSCONVERT_INFO     AcpiRsConvertMemory32[4] =
+{
+    {ACPI_RSC_INITGET,  ACPI_RESOURCE_TYPE_MEMORY32,
+                        ACPI_RS_SIZE (ACPI_RESOURCE_MEMORY32),
+                        ACPI_RSC_TABLE_SIZE (AcpiRsConvertMemory32)},
+
+    {ACPI_RSC_INITSET,  ACPI_RESOURCE_NAME_MEMORY32,
+                        sizeof (AML_RESOURCE_MEMORY32),
+                        0},
+
+    /* Read/Write bit */
+
+    {ACPI_RSC_1BITFLAG, ACPI_RS_OFFSET (Data.Memory32.WriteProtect),
+                        AML_OFFSET (Memory32.Flags),
+                        0},
+    /*
+     * These fields are contiguous in both the source and destination:
+     * Minimum Base Address
+     * Maximum Base Address
+     * Address Base Alignment
+     * Range Length
+     */
+    {ACPI_RSC_MOVE32,   ACPI_RS_OFFSET (Data.Memory32.Minimum),
+                        AML_OFFSET (Memory32.Minimum),
+                        4}
+};
+
+
+/*******************************************************************************
+ *
+ * AcpiRsConvertFixedMemory32
+ *
+ ******************************************************************************/
+
+ACPI_RSCONVERT_INFO     AcpiRsConvertFixedMemory32[4] =
+{
+    {ACPI_RSC_INITGET,  ACPI_RESOURCE_TYPE_FIXED_MEMORY32,
+                        ACPI_RS_SIZE (ACPI_RESOURCE_FIXED_MEMORY32),
+                        ACPI_RSC_TABLE_SIZE (AcpiRsConvertFixedMemory32)},
+
+    {ACPI_RSC_INITSET,  ACPI_RESOURCE_NAME_FIXED_MEMORY32,
+                        sizeof (AML_RESOURCE_FIXED_MEMORY32),
+                        0},
+
+    /* Read/Write bit */
+
+    {ACPI_RSC_1BITFLAG, ACPI_RS_OFFSET (Data.FixedMemory32.WriteProtect),
+                        AML_OFFSET (FixedMemory32.Flags),
+                        0},
+    /*
+     * These fields are contiguous in both the source and destination:
+     * Base Address
+     * Range Length
+     */
+    {ACPI_RSC_MOVE32,   ACPI_RS_OFFSET (Data.FixedMemory32.Address),
+                        AML_OFFSET (FixedMemory32.Address),
+                        2}
+};
+
+
+/*******************************************************************************
+ *
+ * AcpiRsGetVendorSmall
+ *
+ ******************************************************************************/
+
+ACPI_RSCONVERT_INFO     AcpiRsGetVendorSmall[3] =
+{
+    {ACPI_RSC_INITGET,  ACPI_RESOURCE_TYPE_VENDOR,
+                        ACPI_RS_SIZE (ACPI_RESOURCE_VENDOR),
+                        ACPI_RSC_TABLE_SIZE (AcpiRsGetVendorSmall)},
+
+    /* Length of the vendor data (byte count) */
+
+    {ACPI_RSC_COUNT16,  ACPI_RS_OFFSET (Data.Vendor.ByteLength),
+                        0,
+                        sizeof (UINT8)},
+
+    /* Vendor data */
+
+    {ACPI_RSC_MOVE8,    ACPI_RS_OFFSET (Data.Vendor.ByteData[0]),
+                        sizeof (AML_RESOURCE_SMALL_HEADER),
+                        0}
+};
+
+
+/*******************************************************************************
+ *
+ * AcpiRsGetVendorLarge
+ *
+ ******************************************************************************/
+
+ACPI_RSCONVERT_INFO     AcpiRsGetVendorLarge[3] =
+{
+    {ACPI_RSC_INITGET,  ACPI_RESOURCE_TYPE_VENDOR,
+                        ACPI_RS_SIZE (ACPI_RESOURCE_VENDOR),
+                        ACPI_RSC_TABLE_SIZE (AcpiRsGetVendorLarge)},
+
+    /* Length of the vendor data (byte count) */
+
+    {ACPI_RSC_COUNT16,  ACPI_RS_OFFSET (Data.Vendor.ByteLength),
+                        0,
+                        sizeof (UINT8)},
+
+    /* Vendor data */
+
+    {ACPI_RSC_MOVE8,    ACPI_RS_OFFSET (Data.Vendor.ByteData[0]),
+                        sizeof (AML_RESOURCE_LARGE_HEADER),
+                        0}
+};
+
+
+/*******************************************************************************
+ *
+ * AcpiRsSetVendor
+ *
+ ******************************************************************************/
+
+ACPI_RSCONVERT_INFO     AcpiRsSetVendor[7] =
+{
+    /* Default is a small vendor descriptor */
+
+    {ACPI_RSC_INITSET,  ACPI_RESOURCE_NAME_VENDOR_SMALL,
+                        sizeof (AML_RESOURCE_SMALL_HEADER),
+                        ACPI_RSC_TABLE_SIZE (AcpiRsSetVendor)},
+
+    /* Get the length and copy the data */
+
+    {ACPI_RSC_COUNT16,  ACPI_RS_OFFSET (Data.Vendor.ByteLength),
+                        0,
+                        0},
+
+    {ACPI_RSC_MOVE8,    ACPI_RS_OFFSET (Data.Vendor.ByteData[0]),
+                        sizeof (AML_RESOURCE_SMALL_HEADER),
+                        0},
 
     /*
-     * Special case for the root node. This can happen if we get an
-     * error during the execution of module-level code.
+     * All done if the Vendor byte length is 7 or less, meaning that it will
+     * fit within a small descriptor
      */
-    if (ACPI_COMPARE_NAMESEG (Name, ACPI_ROOT_PATHNAME))
-    {
-        return;
-    }
+    {ACPI_RSC_EXIT_LE,  0, 0, 7},
 
-    ACPI_COPY_NAMESEG (&OriginalName, &Name[0]);
+    /* Must create a large vendor descriptor */
 
-    /* Check each character in the name */
+    {ACPI_RSC_INITSET,  ACPI_RESOURCE_NAME_VENDOR_LARGE,
+                        sizeof (AML_RESOURCE_LARGE_HEADER),
+                        0},
 
-    for (i = 0; i < ACPI_NAMESEG_SIZE; i++)
-    {
-        if (AcpiUtValidNameChar (Name[i], i))
-        {
-            continue;
-        }
+    {ACPI_RSC_COUNT16,  ACPI_RS_OFFSET (Data.Vendor.ByteLength),
+                        0,
+                        0},
 
-        /*
-         * Replace a bad character with something printable, yet technically
-         * "odd". This prevents any collisions with existing "good"
-         * names in the namespace.
-         */
-        Name[i] = '_';
-        FoundBadChar = TRUE;
-    }
-
-    if (FoundBadChar)
-    {
-        /* Report warning only if in strict mode or debug mode */
-
-        if (!AcpiGbl_EnableInterpreterSlack)
-        {
-            ACPI_WARNING ((AE_INFO,
-                "Invalid character(s) in name (0x%.8X) %p, repaired: [%4.4s]",
-                OriginalName, Name, &Name[0]));
-        }
-        else
-        {
-            ACPI_DEBUG_PRINT ((ACPI_DB_INFO,
-                "Invalid character(s) in name (0x%.8X), repaired: [%4.4s]",
-                OriginalName, Name));
-        }
-    }
-}
-
-
-#if defined ACPI_ASL_COMPILER || defined ACPI_EXEC_APP
-/*******************************************************************************
- *
- * FUNCTION:    UtConvertBackslashes
- *
- * PARAMETERS:  Pathname        - File pathname string to be converted
- *
- * RETURN:      Modifies the input Pathname
- *
- * DESCRIPTION: Convert all backslashes (0x5C) to forward slashes (0x2F) within
- *              the entire input file pathname string.
- *
- ******************************************************************************/
-
-void
-UtConvertBackslashes (
-    char                    *Pathname)
-{
-
-    if (!Pathname)
-    {
-        return;
-    }
-
-    while (*Pathname)
-    {
-        if (*Pathname == '\\')
-        {
-            *Pathname = '/';
-        }
-
-        Pathname++;
-    }
-}
-#endif
+    {ACPI_RSC_MOVE8,    ACPI_RS_OFFSET (Data.Vendor.ByteData[0]),
+                        sizeof (AML_RESOURCE_LARGE_HEADER),
+                        0}
+};

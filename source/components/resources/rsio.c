@@ -1,6 +1,6 @@
 /*******************************************************************************
  *
- * Module Name: utstring - Common functions for strings and characters
+ * Module Name: rsio - IO and DMA resource descriptors
  *
  ******************************************************************************/
 
@@ -151,235 +151,258 @@
 
 #include "acpi.h"
 #include "accommon.h"
-#include "acnamesp.h"
+#include "acresrc.h"
 
-
-#define _COMPONENT          ACPI_UTILITIES
-        ACPI_MODULE_NAME    ("utstring")
-
-
-/*******************************************************************************
- *
- * FUNCTION:    AcpiUtPrintString
- *
- * PARAMETERS:  String          - Null terminated ASCII string
- *              MaxLength       - Maximum output length. Used to constrain the
- *                                length of strings during debug output only.
- *
- * RETURN:      None
- *
- * DESCRIPTION: Dump an ASCII string with support for ACPI-defined escape
- *              sequences.
- *
- ******************************************************************************/
-
-void
-AcpiUtPrintString (
-    char                    *String,
-    UINT16                  MaxLength)
-{
-    UINT32                  i;
-
-
-    if (!String)
-    {
-        AcpiOsPrintf ("<\"NULL STRING PTR\">");
-        return;
-    }
-
-    AcpiOsPrintf ("\"");
-    for (i = 0; (i < MaxLength) && String[i]; i++)
-    {
-        /* Escape sequences */
-
-        switch (String[i])
-        {
-        case 0x07:
-
-            AcpiOsPrintf ("\\a");       /* BELL */
-            break;
-
-        case 0x08:
-
-            AcpiOsPrintf ("\\b");       /* BACKSPACE */
-            break;
-
-        case 0x0C:
-
-            AcpiOsPrintf ("\\f");       /* FORMFEED */
-            break;
-
-        case 0x0A:
-
-            AcpiOsPrintf ("\\n");       /* LINEFEED */
-            break;
-
-        case 0x0D:
-
-            AcpiOsPrintf ("\\r");       /* CARRIAGE RETURN*/
-            break;
-
-        case 0x09:
-
-            AcpiOsPrintf ("\\t");       /* HORIZONTAL TAB */
-            break;
-
-        case 0x0B:
-
-            AcpiOsPrintf ("\\v");       /* VERTICAL TAB */
-            break;
-
-        case '\'':                      /* Single Quote */
-        case '\"':                      /* Double Quote */
-        case '\\':                      /* Backslash */
-
-            AcpiOsPrintf ("\\%c", (int) String[i]);
-            break;
-
-        default:
-
-            /* Check for printable character or hex escape */
-
-            if (isprint ((int) String[i]))
-            {
-                /* This is a normal character */
-
-                AcpiOsPrintf ("%c", (int) String[i]);
-            }
-            else
-            {
-                /* All others will be Hex escapes */
-
-                AcpiOsPrintf ("\\x%2.2X", (INT32) String[i]);
-            }
-            break;
-        }
-    }
-
-    AcpiOsPrintf ("\"");
-
-    if (i == MaxLength && String[i])
-    {
-        AcpiOsPrintf ("...");
-    }
-}
+#define _COMPONENT          ACPI_RESOURCES
+        ACPI_MODULE_NAME    ("rsio")
 
 
 /*******************************************************************************
  *
- * FUNCTION:    AcpiUtRepairName
- *
- * PARAMETERS:  Name            - The ACPI name to be repaired
- *
- * RETURN:      Repaired version of the name
- *
- * DESCRIPTION: Repair an ACPI name: Change invalid characters to '*' and
- *              return the new name. NOTE: the Name parameter must reside in
- *              read/write memory, cannot be a const.
- *
- * An ACPI Name must consist of valid ACPI characters. We will repair the name
- * if necessary because we don't want to abort because of this, but we want
- * all namespace names to be printable. A warning message is appropriate.
- *
- * This issue came up because there are in fact machines that exhibit
- * this problem, and we want to be able to enable ACPI support for them,
- * even though there are a few bad names.
+ * AcpiRsConvertIo
  *
  ******************************************************************************/
 
-void
-AcpiUtRepairName (
-    char                    *Name)
+ACPI_RSCONVERT_INFO     AcpiRsConvertIo[5] =
 {
-    UINT32                  i;
-    BOOLEAN                 FoundBadChar = FALSE;
-    UINT32                  OriginalName;
+    {ACPI_RSC_INITGET,  ACPI_RESOURCE_TYPE_IO,
+                        ACPI_RS_SIZE (ACPI_RESOURCE_IO),
+                        ACPI_RSC_TABLE_SIZE (AcpiRsConvertIo)},
+
+    {ACPI_RSC_INITSET,  ACPI_RESOURCE_NAME_IO,
+                        sizeof (AML_RESOURCE_IO),
+                        0},
+
+    /* Decode flag */
+
+    {ACPI_RSC_1BITFLAG, ACPI_RS_OFFSET (Data.Io.IoDecode),
+                        AML_OFFSET (Io.Flags),
+                        0},
+    /*
+     * These fields are contiguous in both the source and destination:
+     * Address Alignment
+     * Length
+     * Minimum Base Address
+     * Maximum Base Address
+     */
+    {ACPI_RSC_MOVE8,    ACPI_RS_OFFSET (Data.Io.Alignment),
+                        AML_OFFSET (Io.Alignment),
+                        2},
+
+    {ACPI_RSC_MOVE16,   ACPI_RS_OFFSET (Data.Io.Minimum),
+                        AML_OFFSET (Io.Minimum),
+                        2}
+};
 
 
-    ACPI_FUNCTION_NAME (UtRepairName);
+/*******************************************************************************
+ *
+ * AcpiRsConvertFixedIo
+ *
+ ******************************************************************************/
+
+ACPI_RSCONVERT_INFO     AcpiRsConvertFixedIo[4] =
+{
+    {ACPI_RSC_INITGET,  ACPI_RESOURCE_TYPE_FIXED_IO,
+                        ACPI_RS_SIZE (ACPI_RESOURCE_FIXED_IO),
+                        ACPI_RSC_TABLE_SIZE (AcpiRsConvertFixedIo)},
+
+    {ACPI_RSC_INITSET,  ACPI_RESOURCE_NAME_FIXED_IO,
+                        sizeof (AML_RESOURCE_FIXED_IO),
+                        0},
+    /*
+     * These fields are contiguous in both the source and destination:
+     * Base Address
+     * Length
+     */
+    {ACPI_RSC_MOVE8,    ACPI_RS_OFFSET (Data.FixedIo.AddressLength),
+                        AML_OFFSET (FixedIo.AddressLength),
+                        1},
+
+    {ACPI_RSC_MOVE16,   ACPI_RS_OFFSET (Data.FixedIo.Address),
+                        AML_OFFSET (FixedIo.Address),
+                        1}
+};
+
+
+/*******************************************************************************
+ *
+ * AcpiRsConvertGenericReg
+ *
+ ******************************************************************************/
+
+ACPI_RSCONVERT_INFO     AcpiRsConvertGenericReg[4] =
+{
+    {ACPI_RSC_INITGET,  ACPI_RESOURCE_TYPE_GENERIC_REGISTER,
+                        ACPI_RS_SIZE (ACPI_RESOURCE_GENERIC_REGISTER),
+                        ACPI_RSC_TABLE_SIZE (AcpiRsConvertGenericReg)},
+
+    {ACPI_RSC_INITSET,  ACPI_RESOURCE_NAME_GENERIC_REGISTER,
+                        sizeof (AML_RESOURCE_GENERIC_REGISTER),
+                        0},
+    /*
+     * These fields are contiguous in both the source and destination:
+     * Address Space ID
+     * Register Bit Width
+     * Register Bit Offset
+     * Access Size
+     */
+    {ACPI_RSC_MOVE8,    ACPI_RS_OFFSET (Data.GenericReg.SpaceId),
+                        AML_OFFSET (GenericReg.AddressSpaceId),
+                        4},
+
+    /* Get the Register Address */
+
+    {ACPI_RSC_MOVE64,   ACPI_RS_OFFSET (Data.GenericReg.Address),
+                        AML_OFFSET (GenericReg.Address),
+                        1}
+};
+
+
+/*******************************************************************************
+ *
+ * AcpiRsConvertEndDpf
+ *
+ ******************************************************************************/
+
+ACPI_RSCONVERT_INFO   AcpiRsConvertEndDpf[2] =
+{
+    {ACPI_RSC_INITGET,  ACPI_RESOURCE_TYPE_END_DEPENDENT,
+                        ACPI_RS_SIZE_MIN,
+                        ACPI_RSC_TABLE_SIZE (AcpiRsConvertEndDpf)},
+
+    {ACPI_RSC_INITSET,  ACPI_RESOURCE_NAME_END_DEPENDENT,
+                        sizeof (AML_RESOURCE_END_DEPENDENT),
+                        0}
+};
+
+
+/*******************************************************************************
+ *
+ * AcpiRsConvertEndTag
+ *
+ ******************************************************************************/
+
+ACPI_RSCONVERT_INFO   AcpiRsConvertEndTag[2] =
+{
+    {ACPI_RSC_INITGET,  ACPI_RESOURCE_TYPE_END_TAG,
+                        ACPI_RS_SIZE_MIN,
+                        ACPI_RSC_TABLE_SIZE (AcpiRsConvertEndTag)},
+
+    /*
+     * Note: The checksum field is set to zero, meaning that the resource
+     * data is treated as if the checksum operation succeeded.
+     * (ACPI Spec 1.0b Section 6.4.2.8)
+     */
+    {ACPI_RSC_INITSET,  ACPI_RESOURCE_NAME_END_TAG,
+                        sizeof (AML_RESOURCE_END_TAG),
+                        0}
+};
+
+
+/*******************************************************************************
+ *
+ * AcpiRsGetStartDpf
+ *
+ ******************************************************************************/
+
+ACPI_RSCONVERT_INFO   AcpiRsGetStartDpf[6] =
+{
+    {ACPI_RSC_INITGET,  ACPI_RESOURCE_TYPE_START_DEPENDENT,
+                        ACPI_RS_SIZE (ACPI_RESOURCE_START_DEPENDENT),
+                        ACPI_RSC_TABLE_SIZE (AcpiRsGetStartDpf)},
+
+    /* Defaults for Compatibility and Performance priorities */
+
+    {ACPI_RSC_SET8,     ACPI_RS_OFFSET (Data.StartDpf.CompatibilityPriority),
+                        ACPI_ACCEPTABLE_CONFIGURATION,
+                        2},
+
+    /* Get the descriptor length (0 or 1 for Start Dpf descriptor) */
+
+    {ACPI_RSC_1BITFLAG, ACPI_RS_OFFSET (Data.StartDpf.DescriptorLength),
+                        AML_OFFSET (StartDpf.DescriptorType),
+                        0},
+
+    /* All done if there is no flag byte present in the descriptor */
+
+    {ACPI_RSC_EXIT_NE,  ACPI_RSC_COMPARE_AML_LENGTH, 0, 1},
+
+    /* Flag byte is present, get the flags */
+
+    {ACPI_RSC_2BITFLAG, ACPI_RS_OFFSET (Data.StartDpf.CompatibilityPriority),
+                        AML_OFFSET (StartDpf.Flags),
+                        0},
+
+    {ACPI_RSC_2BITFLAG, ACPI_RS_OFFSET (Data.StartDpf.PerformanceRobustness),
+                        AML_OFFSET (StartDpf.Flags),
+                        2}
+};
+
+
+/*******************************************************************************
+ *
+ * AcpiRsSetStartDpf
+ *
+ ******************************************************************************/
+
+ACPI_RSCONVERT_INFO   AcpiRsSetStartDpf[10] =
+{
+    /* Start with a default descriptor of length 1 */
+
+    {ACPI_RSC_INITSET,  ACPI_RESOURCE_NAME_START_DEPENDENT,
+                        sizeof (AML_RESOURCE_START_DEPENDENT),
+                        ACPI_RSC_TABLE_SIZE (AcpiRsSetStartDpf)},
+
+    /* Set the default flag values */
+
+    {ACPI_RSC_2BITFLAG, ACPI_RS_OFFSET (Data.StartDpf.CompatibilityPriority),
+                        AML_OFFSET (StartDpf.Flags),
+                        0},
+
+    {ACPI_RSC_2BITFLAG, ACPI_RS_OFFSET (Data.StartDpf.PerformanceRobustness),
+                        AML_OFFSET (StartDpf.Flags),
+                        2},
+    /*
+     * All done if the output descriptor length is required to be 1
+     * (i.e., optimization to 0 bytes cannot be attempted)
+     */
+    {ACPI_RSC_EXIT_EQ,  ACPI_RSC_COMPARE_VALUE,
+                        ACPI_RS_OFFSET(Data.StartDpf.DescriptorLength),
+                        1},
+
+    /* Set length to 0 bytes (no flags byte) */
+
+    {ACPI_RSC_LENGTH,   0, 0, sizeof (AML_RESOURCE_START_DEPENDENT_NOPRIO)},
+
+    /*
+     * All done if the output descriptor length is required to be 0.
+     *
+     * TBD: Perhaps we should check for error if input flags are not
+     * compatible with a 0-byte descriptor.
+     */
+    {ACPI_RSC_EXIT_EQ,  ACPI_RSC_COMPARE_VALUE,
+                        ACPI_RS_OFFSET(Data.StartDpf.DescriptorLength),
+                        0},
+
+    /* Reset length to 1 byte (descriptor with flags byte) */
+
+    {ACPI_RSC_LENGTH,   0, 0, sizeof (AML_RESOURCE_START_DEPENDENT)},
 
 
     /*
-     * Special case for the root node. This can happen if we get an
-     * error during the execution of module-level code.
+     * All done if flags byte is necessary -- if either priority value
+     * is not ACPI_ACCEPTABLE_CONFIGURATION
      */
-    if (ACPI_COMPARE_NAMESEG (Name, ACPI_ROOT_PATHNAME))
-    {
-        return;
-    }
+    {ACPI_RSC_EXIT_NE,  ACPI_RSC_COMPARE_VALUE,
+                        ACPI_RS_OFFSET (Data.StartDpf.CompatibilityPriority),
+                        ACPI_ACCEPTABLE_CONFIGURATION},
 
-    ACPI_COPY_NAMESEG (&OriginalName, &Name[0]);
+    {ACPI_RSC_EXIT_NE,  ACPI_RSC_COMPARE_VALUE,
+                        ACPI_RS_OFFSET (Data.StartDpf.PerformanceRobustness),
+                        ACPI_ACCEPTABLE_CONFIGURATION},
 
-    /* Check each character in the name */
+    /* Flag byte is not necessary */
 
-    for (i = 0; i < ACPI_NAMESEG_SIZE; i++)
-    {
-        if (AcpiUtValidNameChar (Name[i], i))
-        {
-            continue;
-        }
-
-        /*
-         * Replace a bad character with something printable, yet technically
-         * "odd". This prevents any collisions with existing "good"
-         * names in the namespace.
-         */
-        Name[i] = '_';
-        FoundBadChar = TRUE;
-    }
-
-    if (FoundBadChar)
-    {
-        /* Report warning only if in strict mode or debug mode */
-
-        if (!AcpiGbl_EnableInterpreterSlack)
-        {
-            ACPI_WARNING ((AE_INFO,
-                "Invalid character(s) in name (0x%.8X) %p, repaired: [%4.4s]",
-                OriginalName, Name, &Name[0]));
-        }
-        else
-        {
-            ACPI_DEBUG_PRINT ((ACPI_DB_INFO,
-                "Invalid character(s) in name (0x%.8X), repaired: [%4.4s]",
-                OriginalName, Name));
-        }
-    }
-}
-
-
-#if defined ACPI_ASL_COMPILER || defined ACPI_EXEC_APP
-/*******************************************************************************
- *
- * FUNCTION:    UtConvertBackslashes
- *
- * PARAMETERS:  Pathname        - File pathname string to be converted
- *
- * RETURN:      Modifies the input Pathname
- *
- * DESCRIPTION: Convert all backslashes (0x5C) to forward slashes (0x2F) within
- *              the entire input file pathname string.
- *
- ******************************************************************************/
-
-void
-UtConvertBackslashes (
-    char                    *Pathname)
-{
-
-    if (!Pathname)
-    {
-        return;
-    }
-
-    while (*Pathname)
-    {
-        if (*Pathname == '\\')
-        {
-            *Pathname = '/';
-        }
-
-        Pathname++;
-    }
-}
-#endif
+    {ACPI_RSC_LENGTH,   0, 0, sizeof (AML_RESOURCE_START_DEPENDENT_NOPRIO)}
+};

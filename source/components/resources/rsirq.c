@@ -1,6 +1,6 @@
 /*******************************************************************************
  *
- * Module Name: utstring - Common functions for strings and characters
+ * Module Name: rsirq - IRQ resource descriptors
  *
  ******************************************************************************/
 
@@ -151,235 +151,276 @@
 
 #include "acpi.h"
 #include "accommon.h"
-#include "acnamesp.h"
+#include "acresrc.h"
 
-
-#define _COMPONENT          ACPI_UTILITIES
-        ACPI_MODULE_NAME    ("utstring")
-
-
-/*******************************************************************************
- *
- * FUNCTION:    AcpiUtPrintString
- *
- * PARAMETERS:  String          - Null terminated ASCII string
- *              MaxLength       - Maximum output length. Used to constrain the
- *                                length of strings during debug output only.
- *
- * RETURN:      None
- *
- * DESCRIPTION: Dump an ASCII string with support for ACPI-defined escape
- *              sequences.
- *
- ******************************************************************************/
-
-void
-AcpiUtPrintString (
-    char                    *String,
-    UINT16                  MaxLength)
-{
-    UINT32                  i;
-
-
-    if (!String)
-    {
-        AcpiOsPrintf ("<\"NULL STRING PTR\">");
-        return;
-    }
-
-    AcpiOsPrintf ("\"");
-    for (i = 0; (i < MaxLength) && String[i]; i++)
-    {
-        /* Escape sequences */
-
-        switch (String[i])
-        {
-        case 0x07:
-
-            AcpiOsPrintf ("\\a");       /* BELL */
-            break;
-
-        case 0x08:
-
-            AcpiOsPrintf ("\\b");       /* BACKSPACE */
-            break;
-
-        case 0x0C:
-
-            AcpiOsPrintf ("\\f");       /* FORMFEED */
-            break;
-
-        case 0x0A:
-
-            AcpiOsPrintf ("\\n");       /* LINEFEED */
-            break;
-
-        case 0x0D:
-
-            AcpiOsPrintf ("\\r");       /* CARRIAGE RETURN*/
-            break;
-
-        case 0x09:
-
-            AcpiOsPrintf ("\\t");       /* HORIZONTAL TAB */
-            break;
-
-        case 0x0B:
-
-            AcpiOsPrintf ("\\v");       /* VERTICAL TAB */
-            break;
-
-        case '\'':                      /* Single Quote */
-        case '\"':                      /* Double Quote */
-        case '\\':                      /* Backslash */
-
-            AcpiOsPrintf ("\\%c", (int) String[i]);
-            break;
-
-        default:
-
-            /* Check for printable character or hex escape */
-
-            if (isprint ((int) String[i]))
-            {
-                /* This is a normal character */
-
-                AcpiOsPrintf ("%c", (int) String[i]);
-            }
-            else
-            {
-                /* All others will be Hex escapes */
-
-                AcpiOsPrintf ("\\x%2.2X", (INT32) String[i]);
-            }
-            break;
-        }
-    }
-
-    AcpiOsPrintf ("\"");
-
-    if (i == MaxLength && String[i])
-    {
-        AcpiOsPrintf ("...");
-    }
-}
+#define _COMPONENT          ACPI_RESOURCES
+        ACPI_MODULE_NAME    ("rsirq")
 
 
 /*******************************************************************************
  *
- * FUNCTION:    AcpiUtRepairName
- *
- * PARAMETERS:  Name            - The ACPI name to be repaired
- *
- * RETURN:      Repaired version of the name
- *
- * DESCRIPTION: Repair an ACPI name: Change invalid characters to '*' and
- *              return the new name. NOTE: the Name parameter must reside in
- *              read/write memory, cannot be a const.
- *
- * An ACPI Name must consist of valid ACPI characters. We will repair the name
- * if necessary because we don't want to abort because of this, but we want
- * all namespace names to be printable. A warning message is appropriate.
- *
- * This issue came up because there are in fact machines that exhibit
- * this problem, and we want to be able to enable ACPI support for them,
- * even though there are a few bad names.
+ * AcpiRsGetIrq
  *
  ******************************************************************************/
 
-void
-AcpiUtRepairName (
-    char                    *Name)
+ACPI_RSCONVERT_INFO     AcpiRsGetIrq[9] =
 {
-    UINT32                  i;
-    BOOLEAN                 FoundBadChar = FALSE;
-    UINT32                  OriginalName;
+    {ACPI_RSC_INITGET,  ACPI_RESOURCE_TYPE_IRQ,
+                        ACPI_RS_SIZE (ACPI_RESOURCE_IRQ),
+                        ACPI_RSC_TABLE_SIZE (AcpiRsGetIrq)},
+
+    /* Get the IRQ mask (bytes 1:2) */
+
+    {ACPI_RSC_BITMASK16,ACPI_RS_OFFSET (Data.Irq.Interrupts[0]),
+                        AML_OFFSET (Irq.IrqMask),
+                        ACPI_RS_OFFSET (Data.Irq.InterruptCount)},
+
+    /* Set default flags (others are zero) */
+
+    {ACPI_RSC_SET8,     ACPI_RS_OFFSET (Data.Irq.Triggering),
+                        ACPI_EDGE_SENSITIVE,
+                        1},
+
+    /* Get the descriptor length (2 or 3 for IRQ descriptor) */
+
+    {ACPI_RSC_2BITFLAG, ACPI_RS_OFFSET (Data.Irq.DescriptorLength),
+                        AML_OFFSET (Irq.DescriptorType),
+                        0},
+
+    /* All done if no flag byte present in descriptor */
+
+    {ACPI_RSC_EXIT_NE,  ACPI_RSC_COMPARE_AML_LENGTH, 0, 3},
+
+    /* Get flags: Triggering[0], Polarity[3], Sharing[4], Wake[5] */
+
+    {ACPI_RSC_1BITFLAG, ACPI_RS_OFFSET (Data.Irq.Triggering),
+                        AML_OFFSET (Irq.Flags),
+                        0},
+
+    {ACPI_RSC_1BITFLAG, ACPI_RS_OFFSET (Data.Irq.Polarity),
+                        AML_OFFSET (Irq.Flags),
+                        3},
+
+    {ACPI_RSC_1BITFLAG, ACPI_RS_OFFSET (Data.Irq.Shareable),
+                        AML_OFFSET (Irq.Flags),
+                        4},
+
+    {ACPI_RSC_1BITFLAG, ACPI_RS_OFFSET (Data.Irq.WakeCapable),
+                        AML_OFFSET (Irq.Flags),
+                        5}
+};
 
 
-    ACPI_FUNCTION_NAME (UtRepairName);
+/*******************************************************************************
+ *
+ * AcpiRsSetIrq
+ *
+ ******************************************************************************/
 
+ACPI_RSCONVERT_INFO     AcpiRsSetIrq[14] =
+{
+    /* Start with a default descriptor of length 3 */
+
+    {ACPI_RSC_INITSET,  ACPI_RESOURCE_NAME_IRQ,
+                        sizeof (AML_RESOURCE_IRQ),
+                        ACPI_RSC_TABLE_SIZE (AcpiRsSetIrq)},
+
+    /* Convert interrupt list to 16-bit IRQ bitmask */
+
+    {ACPI_RSC_BITMASK16,ACPI_RS_OFFSET (Data.Irq.Interrupts[0]),
+                        AML_OFFSET (Irq.IrqMask),
+                        ACPI_RS_OFFSET (Data.Irq.InterruptCount)},
+
+    /* Set flags: Triggering[0], Polarity[3], Sharing[4], Wake[5] */
+
+    {ACPI_RSC_1BITFLAG, ACPI_RS_OFFSET (Data.Irq.Triggering),
+                        AML_OFFSET (Irq.Flags),
+                        0},
+
+    {ACPI_RSC_1BITFLAG, ACPI_RS_OFFSET (Data.Irq.Polarity),
+                        AML_OFFSET (Irq.Flags),
+                        3},
+
+    {ACPI_RSC_1BITFLAG, ACPI_RS_OFFSET (Data.Irq.Shareable),
+                        AML_OFFSET (Irq.Flags),
+                        4},
+
+    {ACPI_RSC_1BITFLAG, ACPI_RS_OFFSET (Data.Irq.WakeCapable),
+                        AML_OFFSET (Irq.Flags),
+                        5},
 
     /*
-     * Special case for the root node. This can happen if we get an
-     * error during the execution of module-level code.
+     * All done if the output descriptor length is required to be 3
+     * (i.e., optimization to 2 bytes cannot be attempted)
      */
-    if (ACPI_COMPARE_NAMESEG (Name, ACPI_ROOT_PATHNAME))
-    {
-        return;
-    }
+    {ACPI_RSC_EXIT_EQ,  ACPI_RSC_COMPARE_VALUE,
+                        ACPI_RS_OFFSET(Data.Irq.DescriptorLength),
+                        3},
 
-    ACPI_COPY_NAMESEG (&OriginalName, &Name[0]);
+    /* Set length to 2 bytes (no flags byte) */
 
-    /* Check each character in the name */
+    {ACPI_RSC_LENGTH,   0, 0, sizeof (AML_RESOURCE_IRQ_NOFLAGS)},
 
-    for (i = 0; i < ACPI_NAMESEG_SIZE; i++)
-    {
-        if (AcpiUtValidNameChar (Name[i], i))
-        {
-            continue;
-        }
+    /*
+     * All done if the output descriptor length is required to be 2.
+     *
+     * TBD: Perhaps we should check for error if input flags are not
+     * compatible with a 2-byte descriptor.
+     */
+    {ACPI_RSC_EXIT_EQ,  ACPI_RSC_COMPARE_VALUE,
+                        ACPI_RS_OFFSET(Data.Irq.DescriptorLength),
+                        2},
 
-        /*
-         * Replace a bad character with something printable, yet technically
-         * "odd". This prevents any collisions with existing "good"
-         * names in the namespace.
-         */
-        Name[i] = '_';
-        FoundBadChar = TRUE;
-    }
+    /* Reset length to 3 bytes (descriptor with flags byte) */
 
-    if (FoundBadChar)
-    {
-        /* Report warning only if in strict mode or debug mode */
+    {ACPI_RSC_LENGTH,   0, 0, sizeof (AML_RESOURCE_IRQ)},
 
-        if (!AcpiGbl_EnableInterpreterSlack)
-        {
-            ACPI_WARNING ((AE_INFO,
-                "Invalid character(s) in name (0x%.8X) %p, repaired: [%4.4s]",
-                OriginalName, Name, &Name[0]));
-        }
-        else
-        {
-            ACPI_DEBUG_PRINT ((ACPI_DB_INFO,
-                "Invalid character(s) in name (0x%.8X), repaired: [%4.4s]",
-                OriginalName, Name));
-        }
-    }
-}
+    /*
+     * Check if the flags byte is necessary. Not needed if the flags are:
+     * ACPI_EDGE_SENSITIVE, ACPI_ACTIVE_HIGH, ACPI_EXCLUSIVE
+     */
+    {ACPI_RSC_EXIT_NE,  ACPI_RSC_COMPARE_VALUE,
+                        ACPI_RS_OFFSET (Data.Irq.Triggering),
+                        ACPI_EDGE_SENSITIVE},
+
+    {ACPI_RSC_EXIT_NE,  ACPI_RSC_COMPARE_VALUE,
+                        ACPI_RS_OFFSET (Data.Irq.Polarity),
+                        ACPI_ACTIVE_HIGH},
+
+    {ACPI_RSC_EXIT_NE,  ACPI_RSC_COMPARE_VALUE,
+                        ACPI_RS_OFFSET (Data.Irq.Shareable),
+                        ACPI_EXCLUSIVE},
+
+    /* We can optimize to a 2-byte IrqNoFlags() descriptor */
+
+    {ACPI_RSC_LENGTH,   0, 0, sizeof (AML_RESOURCE_IRQ_NOFLAGS)}
+};
 
 
-#if defined ACPI_ASL_COMPILER || defined ACPI_EXEC_APP
 /*******************************************************************************
  *
- * FUNCTION:    UtConvertBackslashes
- *
- * PARAMETERS:  Pathname        - File pathname string to be converted
- *
- * RETURN:      Modifies the input Pathname
- *
- * DESCRIPTION: Convert all backslashes (0x5C) to forward slashes (0x2F) within
- *              the entire input file pathname string.
+ * AcpiRsConvertExtIrq
  *
  ******************************************************************************/
 
-void
-UtConvertBackslashes (
-    char                    *Pathname)
+ACPI_RSCONVERT_INFO     AcpiRsConvertExtIrq[10] =
 {
+    {ACPI_RSC_INITGET,  ACPI_RESOURCE_TYPE_EXTENDED_IRQ,
+                        ACPI_RS_SIZE (ACPI_RESOURCE_EXTENDED_IRQ),
+                        ACPI_RSC_TABLE_SIZE (AcpiRsConvertExtIrq)},
 
-    if (!Pathname)
-    {
-        return;
-    }
+    {ACPI_RSC_INITSET,  ACPI_RESOURCE_NAME_EXTENDED_IRQ,
+                        sizeof (AML_RESOURCE_EXTENDED_IRQ),
+                        0},
 
-    while (*Pathname)
-    {
-        if (*Pathname == '\\')
-        {
-            *Pathname = '/';
-        }
+    /*
+     * Flags: Producer/Consumer[0], Triggering[1], Polarity[2],
+     *        Sharing[3], Wake[4]
+     */
+    {ACPI_RSC_1BITFLAG, ACPI_RS_OFFSET (Data.ExtendedIrq.ProducerConsumer),
+                        AML_OFFSET (ExtendedIrq.Flags),
+                        0},
 
-        Pathname++;
-    }
-}
-#endif
+    {ACPI_RSC_1BITFLAG, ACPI_RS_OFFSET (Data.ExtendedIrq.Triggering),
+                        AML_OFFSET (ExtendedIrq.Flags),
+                        1},
+
+    {ACPI_RSC_1BITFLAG, ACPI_RS_OFFSET (Data.ExtendedIrq.Polarity),
+                        AML_OFFSET (ExtendedIrq.Flags),
+                        2},
+
+    {ACPI_RSC_1BITFLAG, ACPI_RS_OFFSET (Data.ExtendedIrq.Shareable),
+                        AML_OFFSET (ExtendedIrq.Flags),
+                        3},
+
+    {ACPI_RSC_1BITFLAG, ACPI_RS_OFFSET (Data.ExtendedIrq.WakeCapable),
+                        AML_OFFSET (ExtendedIrq.Flags),
+                        4},
+
+    /* IRQ Table length (Byte4) */
+
+    {ACPI_RSC_COUNT,    ACPI_RS_OFFSET (Data.ExtendedIrq.InterruptCount),
+                        AML_OFFSET (ExtendedIrq.InterruptCount),
+                        sizeof (UINT32)},
+
+    /* Copy every IRQ in the table, each is 32 bits */
+
+    {ACPI_RSC_MOVE32,   ACPI_RS_OFFSET (Data.ExtendedIrq.Interrupts[0]),
+                        AML_OFFSET (ExtendedIrq.Interrupts[0]),
+                        0},
+
+    /* Optional ResourceSource (Index and String) */
+
+    {ACPI_RSC_SOURCEX,  ACPI_RS_OFFSET (Data.ExtendedIrq.ResourceSource),
+                        ACPI_RS_OFFSET (Data.ExtendedIrq.Interrupts[0]),
+                        sizeof (AML_RESOURCE_EXTENDED_IRQ)}
+};
+
+
+/*******************************************************************************
+ *
+ * AcpiRsConvertDma
+ *
+ ******************************************************************************/
+
+ACPI_RSCONVERT_INFO     AcpiRsConvertDma[6] =
+{
+    {ACPI_RSC_INITGET,  ACPI_RESOURCE_TYPE_DMA,
+                        ACPI_RS_SIZE (ACPI_RESOURCE_DMA),
+                        ACPI_RSC_TABLE_SIZE (AcpiRsConvertDma)},
+
+    {ACPI_RSC_INITSET,  ACPI_RESOURCE_NAME_DMA,
+                        sizeof (AML_RESOURCE_DMA),
+                        0},
+
+    /* Flags: transfer preference, bus mastering, channel speed */
+
+    {ACPI_RSC_2BITFLAG, ACPI_RS_OFFSET (Data.Dma.Transfer),
+                        AML_OFFSET (Dma.Flags),
+                        0},
+
+    {ACPI_RSC_1BITFLAG, ACPI_RS_OFFSET (Data.Dma.BusMaster),
+                        AML_OFFSET (Dma.Flags),
+                        2},
+
+    {ACPI_RSC_2BITFLAG, ACPI_RS_OFFSET (Data.Dma.Type),
+                        AML_OFFSET (Dma.Flags),
+                        5},
+
+    /* DMA channel mask bits */
+
+    {ACPI_RSC_BITMASK,  ACPI_RS_OFFSET (Data.Dma.Channels[0]),
+                        AML_OFFSET (Dma.DmaChannelMask),
+                        ACPI_RS_OFFSET (Data.Dma.ChannelCount)}
+};
+
+
+/*******************************************************************************
+ *
+ * AcpiRsConvertFixedDma
+ *
+ ******************************************************************************/
+
+ACPI_RSCONVERT_INFO     AcpiRsConvertFixedDma[4] =
+{
+    {ACPI_RSC_INITGET,  ACPI_RESOURCE_TYPE_FIXED_DMA,
+                        ACPI_RS_SIZE (ACPI_RESOURCE_FIXED_DMA),
+                        ACPI_RSC_TABLE_SIZE (AcpiRsConvertFixedDma)},
+
+    {ACPI_RSC_INITSET,  ACPI_RESOURCE_NAME_FIXED_DMA,
+                        sizeof (AML_RESOURCE_FIXED_DMA),
+                        0},
+
+    /*
+     * These fields are contiguous in both the source and destination:
+     * RequestLines
+     * Channels
+     */
+    {ACPI_RSC_MOVE16,   ACPI_RS_OFFSET (Data.FixedDma.RequestLines),
+                        AML_OFFSET (FixedDma.RequestLines),
+                        2},
+
+    {ACPI_RSC_MOVE8,    ACPI_RS_OFFSET (Data.FixedDma.Width),
+                        AML_OFFSET (FixedDma.Width),
+                        1},
+};

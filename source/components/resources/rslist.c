@@ -1,6 +1,6 @@
 /*******************************************************************************
  *
- * Module Name: utstring - Common functions for strings and characters
+ * Module Name: rslist - Linked list utilities
  *
  ******************************************************************************/
 
@@ -151,235 +151,246 @@
 
 #include "acpi.h"
 #include "accommon.h"
-#include "acnamesp.h"
+#include "acresrc.h"
 
-
-#define _COMPONENT          ACPI_UTILITIES
-        ACPI_MODULE_NAME    ("utstring")
-
-
-/*******************************************************************************
- *
- * FUNCTION:    AcpiUtPrintString
- *
- * PARAMETERS:  String          - Null terminated ASCII string
- *              MaxLength       - Maximum output length. Used to constrain the
- *                                length of strings during debug output only.
- *
- * RETURN:      None
- *
- * DESCRIPTION: Dump an ASCII string with support for ACPI-defined escape
- *              sequences.
- *
- ******************************************************************************/
-
-void
-AcpiUtPrintString (
-    char                    *String,
-    UINT16                  MaxLength)
-{
-    UINT32                  i;
-
-
-    if (!String)
-    {
-        AcpiOsPrintf ("<\"NULL STRING PTR\">");
-        return;
-    }
-
-    AcpiOsPrintf ("\"");
-    for (i = 0; (i < MaxLength) && String[i]; i++)
-    {
-        /* Escape sequences */
-
-        switch (String[i])
-        {
-        case 0x07:
-
-            AcpiOsPrintf ("\\a");       /* BELL */
-            break;
-
-        case 0x08:
-
-            AcpiOsPrintf ("\\b");       /* BACKSPACE */
-            break;
-
-        case 0x0C:
-
-            AcpiOsPrintf ("\\f");       /* FORMFEED */
-            break;
-
-        case 0x0A:
-
-            AcpiOsPrintf ("\\n");       /* LINEFEED */
-            break;
-
-        case 0x0D:
-
-            AcpiOsPrintf ("\\r");       /* CARRIAGE RETURN*/
-            break;
-
-        case 0x09:
-
-            AcpiOsPrintf ("\\t");       /* HORIZONTAL TAB */
-            break;
-
-        case 0x0B:
-
-            AcpiOsPrintf ("\\v");       /* VERTICAL TAB */
-            break;
-
-        case '\'':                      /* Single Quote */
-        case '\"':                      /* Double Quote */
-        case '\\':                      /* Backslash */
-
-            AcpiOsPrintf ("\\%c", (int) String[i]);
-            break;
-
-        default:
-
-            /* Check for printable character or hex escape */
-
-            if (isprint ((int) String[i]))
-            {
-                /* This is a normal character */
-
-                AcpiOsPrintf ("%c", (int) String[i]);
-            }
-            else
-            {
-                /* All others will be Hex escapes */
-
-                AcpiOsPrintf ("\\x%2.2X", (INT32) String[i]);
-            }
-            break;
-        }
-    }
-
-    AcpiOsPrintf ("\"");
-
-    if (i == MaxLength && String[i])
-    {
-        AcpiOsPrintf ("...");
-    }
-}
+#define _COMPONENT          ACPI_RESOURCES
+        ACPI_MODULE_NAME    ("rslist")
 
 
 /*******************************************************************************
  *
- * FUNCTION:    AcpiUtRepairName
+ * FUNCTION:    AcpiRsConvertAmlToResources
  *
- * PARAMETERS:  Name            - The ACPI name to be repaired
+ * PARAMETERS:  ACPI_WALK_AML_CALLBACK
+ *              ResourcePtr             - Pointer to the buffer that will
+ *                                        contain the output structures
  *
- * RETURN:      Repaired version of the name
+ * RETURN:      Status
  *
- * DESCRIPTION: Repair an ACPI name: Change invalid characters to '*' and
- *              return the new name. NOTE: the Name parameter must reside in
- *              read/write memory, cannot be a const.
- *
- * An ACPI Name must consist of valid ACPI characters. We will repair the name
- * if necessary because we don't want to abort because of this, but we want
- * all namespace names to be printable. A warning message is appropriate.
- *
- * This issue came up because there are in fact machines that exhibit
- * this problem, and we want to be able to enable ACPI support for them,
- * even though there are a few bad names.
+ * DESCRIPTION: Convert an AML resource to an internal representation of the
+ *              resource that is aligned and easier to access.
  *
  ******************************************************************************/
 
-void
-AcpiUtRepairName (
-    char                    *Name)
+ACPI_STATUS
+AcpiRsConvertAmlToResources (
+    UINT8                   *Aml,
+    UINT32                  Length,
+    UINT32                  Offset,
+    UINT8                   ResourceIndex,
+    void                    **Context)
 {
-    UINT32                  i;
-    BOOLEAN                 FoundBadChar = FALSE;
-    UINT32                  OriginalName;
+    ACPI_RESOURCE           **ResourcePtr = ACPI_CAST_INDIRECT_PTR (
+                                ACPI_RESOURCE, Context);
+    ACPI_RESOURCE           *Resource;
+    AML_RESOURCE            *AmlResource;
+    ACPI_RSCONVERT_INFO     *ConversionTable;
+    ACPI_STATUS             Status;
 
 
-    ACPI_FUNCTION_NAME (UtRepairName);
+    ACPI_FUNCTION_TRACE (RsConvertAmlToResources);
 
 
     /*
-     * Special case for the root node. This can happen if we get an
-     * error during the execution of module-level code.
+     * Check that the input buffer and all subsequent pointers into it
+     * are aligned on a native word boundary. Most important on IA64
      */
-    if (ACPI_COMPARE_NAMESEG (Name, ACPI_ROOT_PATHNAME))
+    Resource = *ResourcePtr;
+    if (ACPI_IS_MISALIGNED (Resource))
     {
-        return;
+        ACPI_WARNING ((AE_INFO,
+            "Misaligned resource pointer %p", Resource));
     }
 
-    ACPI_COPY_NAMESEG (&OriginalName, &Name[0]);
+    /* Get the appropriate conversion info table */
 
-    /* Check each character in the name */
+    AmlResource = ACPI_CAST_PTR (AML_RESOURCE, Aml);
 
-    for (i = 0; i < ACPI_NAMESEG_SIZE; i++)
+    if (AcpiUtGetResourceType (Aml) ==
+        ACPI_RESOURCE_NAME_SERIAL_BUS)
     {
-        if (AcpiUtValidNameChar (Name[i], i))
+        if (AmlResource->CommonSerialBus.Type >
+            AML_RESOURCE_MAX_SERIALBUSTYPE)
         {
-            continue;
-        }
-
-        /*
-         * Replace a bad character with something printable, yet technically
-         * "odd". This prevents any collisions with existing "good"
-         * names in the namespace.
-         */
-        Name[i] = '_';
-        FoundBadChar = TRUE;
-    }
-
-    if (FoundBadChar)
-    {
-        /* Report warning only if in strict mode or debug mode */
-
-        if (!AcpiGbl_EnableInterpreterSlack)
-        {
-            ACPI_WARNING ((AE_INFO,
-                "Invalid character(s) in name (0x%.8X) %p, repaired: [%4.4s]",
-                OriginalName, Name, &Name[0]));
+            ConversionTable = NULL;
         }
         else
         {
-            ACPI_DEBUG_PRINT ((ACPI_DB_INFO,
-                "Invalid character(s) in name (0x%.8X), repaired: [%4.4s]",
-                OriginalName, Name));
+            /* This is an I2C, SPI, UART, or CSI2 SerialBus descriptor */
+
+            ConversionTable = AcpiGbl_ConvertResourceSerialBusDispatch [
+                AmlResource->CommonSerialBus.Type];
         }
     }
+    else
+    {
+        ConversionTable = AcpiGbl_GetResourceDispatch[ResourceIndex];
+    }
+
+    if (!ConversionTable)
+    {
+        ACPI_ERROR ((AE_INFO,
+            "Invalid/unsupported resource descriptor: Type 0x%2.2X",
+            ResourceIndex));
+        return_ACPI_STATUS (AE_AML_INVALID_RESOURCE_TYPE);
+    }
+
+     /* Convert the AML byte stream resource to a local resource struct */
+
+    Status = AcpiRsConvertAmlToResource (
+        Resource, AmlResource, ConversionTable);
+    if (ACPI_FAILURE (Status))
+    {
+        ACPI_EXCEPTION ((AE_INFO, Status,
+            "Could not convert AML resource (Type 0x%X)", *Aml));
+        return_ACPI_STATUS (Status);
+    }
+
+    if (!Resource->Length)
+    {
+        ACPI_EXCEPTION ((AE_INFO, Status,
+            "Zero-length resource returned from RsConvertAmlToResource"));
+    }
+
+    ACPI_DEBUG_PRINT ((ACPI_DB_RESOURCES,
+        "Type %.2X, AmlLength %.2X InternalLength %.2X\n",
+        AcpiUtGetResourceType (Aml), Length,
+        Resource->Length));
+
+    /* Point to the next structure in the output buffer */
+
+    *ResourcePtr = ACPI_NEXT_RESOURCE (Resource);
+    return_ACPI_STATUS (AE_OK);
 }
 
 
-#if defined ACPI_ASL_COMPILER || defined ACPI_EXEC_APP
 /*******************************************************************************
  *
- * FUNCTION:    UtConvertBackslashes
+ * FUNCTION:    AcpiRsConvertResourcesToAml
  *
- * PARAMETERS:  Pathname        - File pathname string to be converted
+ * PARAMETERS:  Resource            - Pointer to the resource linked list
+ *              AmlSizeNeeded       - Calculated size of the byte stream
+ *                                    needed from calling AcpiRsGetAmlLength()
+ *                                    The size of the OutputBuffer is
+ *                                    guaranteed to be >= AmlSizeNeeded
+ *              OutputBuffer        - Pointer to the buffer that will
+ *                                    contain the byte stream
  *
- * RETURN:      Modifies the input Pathname
+ * RETURN:      Status
  *
- * DESCRIPTION: Convert all backslashes (0x5C) to forward slashes (0x2F) within
- *              the entire input file pathname string.
+ * DESCRIPTION: Takes the resource linked list and parses it, creating a
+ *              byte stream of resources in the caller's output buffer
  *
  ******************************************************************************/
 
-void
-UtConvertBackslashes (
-    char                    *Pathname)
+ACPI_STATUS
+AcpiRsConvertResourcesToAml (
+    ACPI_RESOURCE           *Resource,
+    ACPI_SIZE               AmlSizeNeeded,
+    UINT8                   *OutputBuffer)
 {
+    UINT8                   *Aml = OutputBuffer;
+    UINT8                   *EndAml = OutputBuffer + AmlSizeNeeded;
+    ACPI_RSCONVERT_INFO     *ConversionTable;
+    ACPI_STATUS             Status;
 
-    if (!Pathname)
-    {
-        return;
-    }
 
-    while (*Pathname)
+    ACPI_FUNCTION_TRACE (RsConvertResourcesToAml);
+
+
+    /* Walk the resource descriptor list, convert each descriptor */
+
+    while (Aml < EndAml)
     {
-        if (*Pathname == '\\')
+        /* Validate the (internal) Resource Type */
+
+        if (Resource->Type > ACPI_RESOURCE_TYPE_MAX)
         {
-            *Pathname = '/';
+            ACPI_ERROR ((AE_INFO,
+                "Invalid descriptor type (0x%X) in resource list",
+                Resource->Type));
+            return_ACPI_STATUS (AE_BAD_DATA);
         }
 
-        Pathname++;
+        /* Sanity check the length. It must not be zero, or we loop forever */
+
+        if (!Resource->Length)
+        {
+            ACPI_ERROR ((AE_INFO,
+                "Invalid zero length descriptor in resource list\n"));
+            return_ACPI_STATUS (AE_AML_BAD_RESOURCE_LENGTH);
+        }
+
+        /* Perform the conversion */
+
+        if (Resource->Type == ACPI_RESOURCE_TYPE_SERIAL_BUS)
+        {
+            if (Resource->Data.CommonSerialBus.Type >
+                AML_RESOURCE_MAX_SERIALBUSTYPE)
+            {
+                ConversionTable = NULL;
+            }
+            else
+            {
+                /* This is an I2C, SPI, UART or CSI2 SerialBus descriptor */
+
+                ConversionTable = AcpiGbl_ConvertResourceSerialBusDispatch[
+                    Resource->Data.CommonSerialBus.Type];
+            }
+        }
+        else
+        {
+            ConversionTable = AcpiGbl_SetResourceDispatch[Resource->Type];
+        }
+
+        if (!ConversionTable)
+        {
+            ACPI_ERROR ((AE_INFO,
+                "Invalid/unsupported resource descriptor: Type 0x%2.2X",
+                Resource->Type));
+            return_ACPI_STATUS (AE_AML_INVALID_RESOURCE_TYPE);
+        }
+
+        Status = AcpiRsConvertResourceToAml (Resource,
+            ACPI_CAST_PTR (AML_RESOURCE, Aml), ConversionTable);
+        if (ACPI_FAILURE (Status))
+        {
+            ACPI_EXCEPTION ((AE_INFO, Status,
+                "Could not convert resource (type 0x%X) to AML",
+                Resource->Type));
+            return_ACPI_STATUS (Status);
+        }
+
+        /* Perform final sanity check on the new AML resource descriptor */
+
+        Status = AcpiUtValidateResource (
+            NULL, ACPI_CAST_PTR (AML_RESOURCE, Aml), NULL);
+        if (ACPI_FAILURE (Status))
+        {
+            return_ACPI_STATUS (Status);
+        }
+
+        /* Check for end-of-list, normal exit */
+
+        if (Resource->Type == ACPI_RESOURCE_TYPE_END_TAG)
+        {
+            /* An End Tag indicates the end of the input Resource Template */
+
+            return_ACPI_STATUS (AE_OK);
+        }
+
+        /*
+         * Extract the total length of the new descriptor and set the
+         * Aml to point to the next (output) resource descriptor
+         */
+        Aml += AcpiUtGetDescriptorLength (Aml);
+
+        /* Point to the next input resource descriptor */
+
+        Resource = ACPI_NEXT_RESOURCE (Resource);
     }
+
+    /* Completed buffer, but did not find an EndTag resource descriptor */
+
+    return_ACPI_STATUS (AE_AML_NO_RESOURCE_END_TAG);
 }
-#endif

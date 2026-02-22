@@ -361,13 +361,13 @@
 #include "aczephyr.h"
 
 #elif defined(__aerosync__)
-#include "acaerosync.h"
+#include <aerosync/acpi/acaerosync.h>
 
 #else
 
 /* Unknown environment */
-
 #error Unknown target environment
+
 #endif
 
 /*! [End] no source code translation !*/
