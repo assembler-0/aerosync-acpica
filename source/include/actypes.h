@@ -433,8 +433,6 @@ typedef UINT64                          ACPI_PHYSICAL_ADDRESS;
 #define ACPI_UNUSED_VAR
 #endif
 
-#include <aerosync/export.h>
-
 /*
  * All ACPICA external functions that are available to the rest of the
  * kernel are tagged with these macros which can be defined as appropriate
@@ -446,11 +444,11 @@ typedef UINT64                          ACPI_PHYSICAL_ADDRESS;
  * ACPI_EXPORT_SYMBOL is used for all other public external functions.
  */
 #ifndef ACPI_EXPORT_SYMBOL_INIT
-#define ACPI_EXPORT_SYMBOL_INIT(Symbol) EXPORT_SYMBOL(Symbol);
+#define ACPI_EXPORT_SYMBOL_INIT(Symbol)
 #endif
 
 #ifndef ACPI_EXPORT_SYMBOL
-#define ACPI_EXPORT_SYMBOL(Symbol)      EXPORT_SYMBOL(Symbol);
+#define ACPI_EXPORT_SYMBOL(Symbol)
 #endif
 
 /*
